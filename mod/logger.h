@@ -2,6 +2,7 @@
 #define _LOGGER_H
 
 #include <stdio.h>
+#define TMPBUF_SIZE 768
 
 enum eLogPrio
 {
@@ -20,6 +21,7 @@ class Logger
 {
 public:
     Logger();
+    void ToggleOutput(bool enabled);
     void SetTag(const char* szTag);
     void Print(eLogPrio prio, const char* szMessage, ...);
     void PrintV(eLogPrio prio, const char* szMessage, va_list args);
@@ -32,6 +34,7 @@ public:
     static Logger* GetLogger();
 private:
     const char* m_szTag;
+    bool m_bEnabled;
 };
 extern Logger* logger;
 
