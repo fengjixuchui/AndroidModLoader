@@ -3,6 +3,7 @@
 #include <vtable_hooker.h>
 #include <include/modslist.h>
 
+char g_szAMLFeatures[1024] = "AML ARMPATCH HOOK CONFIG INTERFACE SUBSTRATE ";
 extern char g_szAppName[0xFF], g_szFakeAppName[0xFF];
 extern char g_szCfgPath[0xFF];
 extern char g_szAndroidDataDir[0xFF];
@@ -83,19 +84,19 @@ void AML::Read(uintptr_t src, uintptr_t dest, size_t size)
     ARMPatch::Read(src, dest, size);
 }
 
-void AML::PlaceNOP(uintptr_t addr, size_t count)
+int AML::PlaceNOP(uintptr_t addr, size_t count)
 {
-    ARMPatch::WriteNOP(addr, count);
+    return ARMPatch::WriteNOP(addr, count);
 }
 
-void AML::PlaceJMP(uintptr_t addr, uintptr_t dest)
+int AML::PlaceJMP(uintptr_t addr, uintptr_t dest)
 {
-    ARMPatch::WriteB(addr, dest);
+    return ARMPatch::WriteB(addr, dest);
 }
 
-void AML::PlaceRET(uintptr_t addr)
+int AML::PlaceRET(uintptr_t addr)
 {
-    ARMPatch::WriteRET(addr);
+    return ARMPatch::WriteRET(addr);
 }
 
 uintptr_t AML::GetLibLength(const char* szLib)
@@ -103,9 +104,9 @@ uintptr_t AML::GetLibLength(const char* szLib)
     return ARMPatch::GetLibLength(szLib);
 }
 
-void AML::Redirect(uintptr_t addr, uintptr_t to)
+int AML::Redirect(uintptr_t addr, uintptr_t to)
 {
-    ARMPatch::Redirect(addr, to);
+    return ARMPatch::Redirect(addr, to);
 }
 
 void AML::PlaceBL(uintptr_t addr, uintptr_t dest)
@@ -128,6 +129,22 @@ uintptr_t AML::PatternScan(const char* pattern, uintptr_t libStart, uintptr_t sc
     return ARMPatch::GetAddressFromPattern(pattern, libStart, scanLen);
 }
 
+void AML::PatchForThumb(bool forThumb)
+{
+    ARMPatch::bThumbMode = forThumb;
+}
+
+const char* AML::GetFeatures()
+{
+    return g_szAMLFeatures;
+}
+
+void AML::AddFeature(const char* f)
+{
+    strcat(g_szAMLFeatures, f);
+    strcat(g_szAMLFeatures, " ");
+}
+
 void AML::HookVtableFunc(void* ptr, unsigned int funcNum, void* func, void** original, bool instantiate)
 {
     HookVtableFunc(ptr, funcNum, func, original, instantiate);
@@ -143,5 +160,41 @@ const char* AML::GetRealCurrentGame()
     return g_szAppName;
 }
 
+void* AML::GetLibHandle(const char* soLib)
+{
+    return ARMPatch::GetLibHandle(soLib);
+}
+
+void* AML::GetLibHandle(uintptr_t addr)
+{
+    return ARMPatch::GetLibHandle(addr);
+}
+
+bool AML::IsCorrectXDLHandle(void* ptr)
+{
+    return ARMPatch::IsCorrectXDLHandle(ptr);
+}
+
+uintptr_t AML::GetLibXDL(void* ptr)
+{
+    return ARMPatch::GetLibXDL(ptr);
+}
+
+uintptr_t AML::GetAddrBaseXDL(uintptr_t addr)
+{
+    return ARMPatch::GetAddrBaseXDL(addr);
+}
+
+size_t AML::GetSymSizeXDL(void* ptr)
+{
+    return ARMPatch::GetSymSizeXDL(ptr);
+}
+
+const char* AML::GetSymNameXDL(void* ptr)
+{
+    return ARMPatch::GetSymNameXDL(ptr);
+}
+
 static AML amlLocal;
 IAML* aml = (IAML*)&amlLocal;
+AML* g_pAML = &amlLocal;

@@ -11,6 +11,7 @@
 #include <fcntl.h> // "open" flags
 #include <dlfcn.h>
 
+#include <include/aml.h>
 #include <include/defines.h>
 #include <mod/amlmod.h>
 #include <mod/logger.h>
@@ -27,14 +28,14 @@
 #include <include/interfaces.h>
 #include <include/modslist.h>
 
-char g_szInternalStoragePath[0xFF] = {0};
-char g_szAppName[0xFF],
-     g_szFakeAppName[0xFF];
-char g_szModsDir[0xFF],
-     g_szInternalModsDir[0xFF];
-char g_szAndroidDataDir[0xFF];
+char g_szInternalStoragePath[256],
+     g_szAppName[256],
+     g_szFakeAppName[256],
+     g_szModsDir[256],
+     g_szInternalModsDir[256],
+     g_szAndroidDataDir[256],
+     g_szCfgPath[256];
 const char* g_szDataDir;
-char g_szCfgPath[0xFF];
 
 static ModInfo modinfoLocal("net.rusjj.aml", "AML Core", "1.0.1", "RusJJ aka [-=KILL MAN=-]");
 ModInfo* modinfo = &modinfoLocal;
@@ -117,7 +118,7 @@ void LoadMods(const char* path)
     SpecificGameFn maybeINeedAGame = NULL;
     GetModInfoFn modInfoFn = NULL;
 
-    char buf[0xFF], dataBuf[0xFF];
+    char buf[256], dataBuf[256];
     DIR* dir = opendir(path);
     if (dir != NULL)
     {
@@ -129,11 +130,12 @@ void LoadMods(const char* path)
             if(diread->d_name[0] == '.') continue; // Skip . and ..
             if(!EndsWithSO(diread->d_name))
             {
-                logger->Error("File %s is not a mod, atleast it is NOT .SO file!", diread->d_name);
+                // Useless info for us!
+                //logger->Error("File %s is not a mod, atleast it is NOT .SO file!", diread->d_name);
                 continue;
             }
-            sprintf(buf, "%s/%s", path, diread->d_name);
-            sprintf(dataBuf, "%s/%s", g_szDataDir, diread->d_name);
+            snprintf(buf, sizeof(buf), "%s/%s", path, diread->d_name);
+            snprintf(dataBuf, sizeof(dataBuf), "%s/%s", g_szDataDir, diread->d_name);
             //unlink(dataBuf);
             chmod(dataBuf, S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IWGRP | S_IXGRP); // XMDS
             int removeStatus = remove(dataBuf);
@@ -217,14 +219,14 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
     /* Internal Storage */
     jTmp = GetAbsolutePath(env, GetStorageDir(env));
     szTmp = env->GetStringUTFChars(jTmp, NULL);
-    sprintf(g_szInternalStoragePath, "%s", szTmp);
+    snprintf(g_szInternalStoragePath, sizeof(g_szInternalStoragePath), "%s", szTmp);
     env->ReleaseStringUTFChars(jTmp, szTmp);
 
     /* Package Name */
     char i = 0;
     jTmp = GetPackageName(env, appContext);
     szTmp = env->GetStringUTFChars(jTmp, NULL);
-    while(szTmp[i] != 0 && i < 0xFF)
+    while(szTmp[i] != 0 && i < sizeof(g_szAppName)-1)
     {
         g_szAppName[i] = tolower(szTmp[i]);
         ++i;
@@ -233,22 +235,22 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
     logger->Info("Determined app info: %s", g_szAppName);
 
     /* Create a folder in /Android/data/.../ */
-    char szBuf[0xFF];
+    char szBuf[256];
     snprintf(szBuf, sizeof(szBuf), "%s/Android/data/%s/", g_szInternalStoragePath, g_szAppName);
     DIR* dir = opendir(szBuf);
     if(dir != NULL) closedir(dir);
     else GetExternalFilesDir(env, appContext);
 
     /* Create "mods" folder in /Android/data/.../ */
-    sprintf(g_szModsDir, "%s/Android/data/%s/mods/", g_szInternalStoragePath, g_szAppName);
+    snprintf(g_szModsDir, sizeof(g_szModsDir), "%s/Android/data/%s/mods/", g_szInternalStoragePath, g_szAppName);
     mkdir(g_szModsDir, 0777);
 
     /* Create "files" folder in /Android/data/.../ */
-    sprintf(g_szAndroidDataDir, "%s/Android/data/%s/files/", g_szInternalStoragePath, g_szAppName);
+    snprintf(g_szAndroidDataDir, sizeof(g_szAndroidDataDir), "%s/Android/data/%s/files/", g_szInternalStoragePath, g_szAppName);
     mkdir(g_szAndroidDataDir, 0777); // Who knows, right?
 
     /* Create "configs" folder in /Android/data/.../ */
-    sprintf(g_szCfgPath, "%s/Android/data/%s/configs/", g_szInternalStoragePath, g_szAppName);
+    snprintf(g_szCfgPath, sizeof(g_szCfgPath), "%s/Android/data/%s/configs/", g_szInternalStoragePath, g_szAppName);
     mkdir(g_szCfgPath, 0777);
 
     /* root/data/data Folder */
@@ -257,21 +259,16 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
     /* AML Config */
     logger->Info("Reading config...");
     cfg->Init();
-    cfg->Bind("Author", "")->SetString("RusJJ aka [-=KILL MAN=-]");
-    cfg->Bind("Version", "")->SetString(modinfo->VersionString());
-    cfg->Bind("LaunchedTimeStamp", 0)->SetInt((int)time(NULL));
-    const char* szFakeAppName = cfg->Bind("FakePackageName", "")->GetString();
-    strcpy(g_szFakeAppName, szFakeAppName);
-    const char* szInternalModsDir = cfg->Bind("InternalModsFolder", "AMLMods")->GetString();
-    sprintf(g_szInternalModsDir, "%s/%s/%s", g_szInternalStoragePath, szInternalModsDir, g_szAppName);
-    bool internalModsPriority = cfg->Bind("InternalModsFirst", true)->GetBool();
-    logger->ToggleOutput(cfg->Bind("EnableLogcats", true)->GetBool());
+    cfg->BindOnce("Author", "")->SetString("RusJJ aka [-=KILL MAN=-]");
+    cfg->BindOnce("Discord", "")->SetString("https://discord.gg/2MY7W39kBg");
+    bool bHasChangedCfgAuthor = cfg->IsValueChanged();
+    cfg->BindOnce("Version", "")->SetString(modinfo->VersionString());
+    cfg->BindOnce("LaunchedTimeStamp", 0)->SetInt((int)time(NULL));
+    cfg->BindOnce("FakePackageName", "")->GetString(g_szFakeAppName, sizeof(g_szFakeAppName));
+    snprintf(g_szInternalModsDir, sizeof(g_szInternalModsDir), "%s/%s/%s", g_szInternalStoragePath, cfg->BindOnce("InternalModsFolder", "AMLMods")->GetString(), g_szAppName);
+    bool internalModsPriority = cfg->BindOnce("InternalModsFirst", true)->GetBool();
+    logger->ToggleOutput(cfg->BindOnce("EnableLogcats", true)->GetBool());
     cfg->Save();
-    
-    if(HasFakeAppName())
-    {
-        logger->Info("We are liars, aren't we? ;p");
-    }
 
     /* Mods? */
     logger->Info("Working with mods...");
@@ -285,6 +282,17 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
     /* All mods are loaded now. We should check for dependencies! */
     logger->Info("Checking for dependencies...");
     modlist->ProcessDependencies();
+    
+    /* Process features */
+    #ifdef __XDL
+        g_pAML->AddFeature("XDL");
+    #endif
+    #ifdef __IL2CPPUTILS
+        g_pAML->AddFeature("IL2CPP");
+    #endif
+    if(g_pAML->IsGameFaked()) g_pAML->AddFeature("FAKEGAME");
+    if(bHasChangedCfgAuthor) g_pAML->AddFeature("STEALER");
+    if(!logger->HasOutput()) g_pAML->AddFeature("NOLOGGING");
 
     /* All mods are sorted and should be loaded! */
     modlist->ProcessPreLoading();
